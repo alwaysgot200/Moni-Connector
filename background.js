@@ -11,7 +11,7 @@ import {
 import { MSG, CODES, bridgeError, toBridgeError } from "./lib/messages.js";
 
 const SCHEMA = "moni-bridge-v1";
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const DEFAULT_ENDPOINT = `127.0.0.1:${DEFAULT_UPLOAD_PORT}`;
 const ALARM_KEEPALIVE = "moni.keepalive";
 const MENU_ID = "moni.collect-image";
@@ -26,7 +26,10 @@ const CAPS = Object.freeze({
   "elements.resolve": 1,
   "capture.visible": 1,
   "cookies.get": 1,
-  "assets.fetch": 1
+  "assets.fetch": 1,
+  // 主动事件主题（仅 Connector 拥有的上游通道）
+  "elements.context": 1,
+  "elements.picked": 1
 });
 
 let socket = null;
@@ -43,6 +46,8 @@ let activePick = null;
 let pingSeq = 0;
 let lastError = "";
 let handshaken = false;
+// 宿主在 hello 回执里显式声明 events=true 才允许主动推送（兼容旧宿主）。
+let eventPushEnabled = false;
 
 /** @type {Map<string, {resolve: Function, timer: number, tabId: number}>} */
 const pendingPicks = new Map();
@@ -91,6 +96,7 @@ async function setStatus(patch = {}) {
     hasToken: Boolean(config.token),
     uploadReady: Boolean(uploadToken) && Date.now() < uploadExpiresAt,
     uploadExpiresAt,
+    eventPush: eventPushEnabled,
     version: VERSION,
     lastError,
     updatedAt: Date.now(),
@@ -125,6 +131,19 @@ function sendFrame(type, id, payload) {
     console.warn("[moni] send failed", err && err.message);
     return false;
   }
+}
+
+/**
+ * 主动事件（Connector 专属通道）：单向推送，不需要 id 回执。
+ * 只有宿主在 hello 回执里声明 events=true 时才发送，避免旧宿主把未知帧
+ * 当成协议错误而断开连接。
+ */
+function sendEvent(topic, data) {
+  if (!eventPushEnabled) return false;
+  return sendFrame("event", `event-${generateId().slice(0, 12)}`, {
+    topic,
+    data: data || {}
+  });
 }
 
 async function sendHello(config) {
@@ -184,6 +203,7 @@ function connect(config) {
   ws.onopen = () => {
     backoff = 1000;
     handshaken = false;
+    eventPushEnabled = false;
     setStatus({ connected: true, handshaken: false, reason: "handshake" }).catch(() => {});
     sendHello(config).catch((err) => console.warn("[moni] hello failed", err && err.message));
   };
@@ -206,6 +226,7 @@ function connect(config) {
     if (socket !== ws) return;
     socket = null;
     handshaken = false;
+    eventPushEnabled = false;
     if (helloResolver) {
       helloResolver.reject(bridgeError(CODES.BROWSER_OFFLINE, "与宿主的连接已断开"));
       helloResolver = null;
@@ -257,6 +278,7 @@ async function handleSocketMessage(text) {
       if (result && result.ok === true) {
         lastError = "";
         handshaken = true;
+        eventPushEnabled = result.events === true;
         applyUpload(result.upload);
         setStatus({ connected: true, handshaken: true, reason: "ready" }).catch(() => {});
         if (helloResolver) helloResolver.resolve(result);
@@ -908,6 +930,7 @@ async function getStatus() {
     hasToken: Boolean(config.token),
     uploadReady: Boolean(uploadToken) && Date.now() < uploadExpiresAt,
     uploadExpiresAt,
+    eventPush: eventPushEnabled,
     version: VERSION,
     lastError,
     permissions
@@ -1000,6 +1023,8 @@ async function recordContextElement(info, tab) {
   const element = normalizeElement(described) || normalizeElement(fallback);
   if (!element) return;
   await chrome.storage.session.set({ contextElement: element, contextAt: Date.now() });
+  // 宿主已明确支持事件通道时立即推送，Moni 无需轮询即可知道用户刚采集了图片。
+  sendEvent("elements.context", { elements: [element] });
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -1026,6 +1051,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         chrome.storage.session
           .set({ orphanPicked: { requestId, elements, at: Date.now() } })
           .catch(() => {});
+        // 宿主可能已超时/重连；补推一条事件让它恢复这次拾取结果。
+        sendEvent("elements.picked", {
+          request_id: requestId,
+          elements,
+          orphan: true
+        });
       }
       sendResponse({ ok: true });
       return;

@@ -2,7 +2,8 @@
 
 RustMoni 桌面应用的浏览器动作桥（Chrome / Edge，Manifest V3）。扩展只连接本机
 `127.0.0.1`，通过 `moni-bridge-v1` WebSocket 协议接收桌面端调用，完成元素拾取、
-选择器批量采集、可见区截图与资源取回上传。
+选择器批量采集、可见区截图与资源取回上传。1.1.0 起还拥有 Connector 专属的
+**主动事件**通道：宿主支持时，右键采集与孤儿拾取会立即推送给桌面端。
 
 无构建步骤、无 npm 依赖、无远程代码；所有逻辑都是仓库内的静态 JS/HTML。
 
@@ -71,6 +72,19 @@ tests/*.test.mjs     node:test 单测
 `data:` URL 忽略。`selector` 为简洁稳定的 CSS path（id 优先，其次 class/tag +
 `nth-of-type`）。
 
+## 主动事件（Connector 专属）
+
+宿主在 hello 回执里返回 `"events": true` 时，扩展才会推送 `event` 帧；旧宿主
+没有该字段时保持静默，兼容 1.0.0 宿主。
+
+| topic | 时机 | data |
+| --- | --- | --- |
+| `elements.context` | 右键「采集图片到 RustMoni」完成后 | `{elements: BrowserElement[]}` |
+| `elements.picked` | 拾取完成但宿主已超时/重连 | `{request_id, elements, orphan: true}` |
+
+事件是单向推送，不需要回执；只有 `app=browser` 的桥拥有这个通道，其他软件桥
+（如 Photoshop）只能被宿主调用。
+
 ## 权限说明
 
 | 权限 | 用途 |
@@ -105,7 +119,7 @@ tests/*.test.mjs     node:test 单测
   `A405_DOWNLOAD_FAILED`。
 - Service Worker 休眠会丢失内存态；端点、token、上传 token 均从 storage 恢复，
   拾取请求若在休眠期间完成会存入 `chrome.storage.session` 的 `orphanPicked`，
-  桌面端可直接重新发起拾取。
+  并在宿主支持时补推 `elements.picked` 事件；桌面端也可重新发起拾取。
 - 端口被占用时桌面端会在 `+0…+19` 内递增；以配对页显示的实际端口为准，配对
   响应里的 `ws` / `upload` 地址优先于本地推导值。
 

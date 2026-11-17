@@ -21,7 +21,7 @@
 {
   "schema": "moni-bridge-v1",
   "id": "字符串 1..64",
-  "type": "hello|call|result|error|progress|ping|pong",
+  "type": "hello|call|result|error|progress|event|ping|pong",
   "ts": 1794919933,
   "nonce": "可选",
   "payload": {}
@@ -42,7 +42,7 @@
   "payload": {
     "client_id": "<持久随机 id>",
     "token": "<配对得到的 token>",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "caps": {
       "elements.pick": 1,
       "elements.query": 1,
@@ -50,7 +50,9 @@
       "elements.resolve": 1,
       "capture.visible": 1,
       "cookies.get": 1,
-      "assets.fetch": 1
+      "assets.fetch": 1,
+      "elements.context": 1,
+      "elements.picked": 1
     },
     "user_agent": "<navigator.userAgent>"
   }
@@ -70,6 +72,7 @@
     "result": {
       "ok": true,
       "app": "browser",
+      "events": true,
       "upload": {
         "endpoint": "http://127.0.0.1:38124/v1/upload",
         "token": "<一次性上传 token>",
@@ -135,6 +138,33 @@ token，然后重试上传一次。
 - 方向任意；收到 `ping` 必须回同 `id` 的 `pong`。
 - 扩展在保活 alarm 中主动发 `ping`，宿主可回 `pong`。
 
+### 2.7 event（扩展 → 宿主，仅 Connector）
+
+```json
+{
+  "schema": "moni-bridge-v1",
+  "id": "event-7f3a1c2b9d10",
+  "type": "event",
+  "ts": 1794919933,
+  "payload": {
+    "topic": "elements.context",
+    "data": { "elements": [] }
+  }
+}
+```
+
+- 单向推送，不需要 `result` 回执；`id` 仅用于日志排查。
+- **只有浏览器桥（`app=browser`）允许发送**；宿主对其他桥的 `event` 帧静默丢弃。
+- `topic` 必须已在 `hello.caps` 声明，形状与 `namespace.verb` 方法名一致。
+- 宿主回执 `events: true` 才发送；旧宿主没有该字段时必须保持静默，避免未知帧
+  触发协议错误断开。
+- 单条 `data` 序列化后上限 64KB；宿主队列上限 64 条，满后丢弃最旧事件。
+
+| topic | data | 触发时机 |
+| --- | --- | --- |
+| `elements.context` | `{elements: BrowserElement[]}` | 右键「采集图片到 RustMoni」写入上下文元素后 |
+| `elements.picked` | `{request_id, elements, orphan: true}` | 拾取完成但宿主已超时/重连（`orphanPicked` 兜底） |
+
 ## 3. 方法清单
 
 ### 3.1 `elements.from_context`
@@ -143,6 +173,7 @@ token，然后重试上传一次。
 - 返回：`BrowserElement[]`，最近一次右键菜单「采集图片到 RustMoni」的图片。
 - 数据来源：`contextMenus.onClicked` 写入 `chrome.storage.session.contextElement`；
   页面可注入时补充描述，否则退回 `srcUrl/pageUrl/linkUrl` 最小信息。
+- 1.1.0 起同时推送 `elements.context` 事件（宿主支持时），无需再轮询。
 - 无记录时回 `A404_NO_ELEMENTS`。
 
 ### 3.2 `elements.pick`
@@ -152,6 +183,8 @@ token，然后重试上传一次。
 - 行为：注入拾取器，绿色 `2px #0FDC78` 高亮框（`pointer-events:none`，
   `z-index:2147483647`），`Esc` 结束；最多 50 个，按 URL 去重。
 - 取消返回 `[]`；超时 `A501_TIMEOUT`；已有拾取进行中 `A403_BRIDGE_BUSY`。
+- 若拾取完成时宿主已超时/重连（无 pending 请求），1.1.0 起补推
+  `elements.picked` 事件并保留 `orphanPicked` 兜底。
 
 ### 3.3 `elements.query`
 
