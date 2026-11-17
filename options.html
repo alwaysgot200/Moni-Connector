@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RustMoni Connector — 配对设置</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1220;
+        --panel: #121b2c;
+        --line: #223049;
+        --text: #e6edf7;
+        --muted: #8fa2bd;
+        --accent: #0fdc78;
+        --danger: #ef5b6b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; padding: 40px 16px;
+        background: radial-gradient(1200px 500px at 50% -100px, #14233a, var(--bg));
+        color: var(--text);
+        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      .wrap { max-width: 560px; margin: 0 auto; }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+      header svg { border-radius: 10px; flex: 0 0 auto; }
+      h1 { margin: 0; font-size: 18px; font-weight: 600; }
+      header p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 12px; padding: 18px; margin-bottom: 14px;
+      }
+      h2 { margin: 0 0 12px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+      label { display: block; margin-bottom: 12px; font-size: 12px; color: var(--muted); }
+      input {
+        width: 100%; margin-top: 5px; padding: 9px 11px;
+        background: #0d1626; color: var(--text);
+        border: 1px solid var(--line); border-radius: 8px;
+        font: inherit; outline: none;
+      }
+      input:focus { border-color: #2f6f4e; box-shadow: 0 0 0 3px rgba(15, 220, 120, .12); }
+      .grid { display: grid; grid-template-columns: 1fr 160px; gap: 12px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      button {
+        padding: 9px 16px; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600;
+        border: 1px solid transparent; background: var(--accent); color: #062013;
+      }
+      button:hover { filter: brightness(1.06); }
+      button.secondary { background: transparent; color: var(--text); border-color: var(--line); font-weight: 500; }
+      button.secondary:hover { border-color: #3d5378; }
+      button:disabled { opacity: .55; cursor: default; }
+      .notice {
+        display: none; margin-top: 12px; padding: 9px 11px; border-radius: 8px;
+        font-size: 12px; border: 1px solid var(--line); background: #0d1626;
+      }
+      .notice.show { display: block; }
+      .notice.ok { border-color: #2f6f4e; color: #b8ffd9; }
+      .notice.error { border-color: #7a3340; color: #ffc9d1; }
+      dl { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; margin: 0; font-size: 12px; }
+      dt { color: var(--muted); }
+      dd { margin: 0; overflow-wrap: anywhere; }
+      .note { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 14px 0 0; }
+      code {
+        background: #0d1626; border: 1px solid var(--line); border-radius: 4px;
+        padding: 1px 5px; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#0fdc78" />
+          <path d="M8 23V9h4.2l3.8 6 3.8-6H24v14h-3.8v-7.6L16 21.8l-4.2-6.4V23H8Z" fill="#07210f" />
+        </svg>
+        <div>
+          <h1>RustMoni Connector</h1>
+          <p>浏览器动作桥 · 配对与服务地址</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>配对</h2>
+        <div class="grid">
+          <label>
+            桥服务地址（host:port）
+            <input id="endpointInput" type="text" spellcheck="false" autocomplete="off"
+              placeholder="127.0.0.1:38124" />
+          </label>
+          <label>
+            6 位配对码
+            <input id="codeInput" type="text" inputmode="numeric" maxlength="6" autocomplete="off"
+              placeholder="000000" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="pairButton" type="button">配对并连接</button>
+          <button id="saveButton" class="secondary" type="button">保存地址</button>
+          <button id="testButton" class="secondary" type="button">连接测试</button>
+        </div>
+        <div id="notice" class="notice"></div>
+      </section>
+
+      <section class="card">
+        <h2>当前配置</h2>
+        <dl>
+          <dt>配对服务</dt>
+          <dd id="endpointState">—</dd>
+          <dt>WebSocket</dt>
+          <dd id="wsState">—</dd>
+          <dt>上传端点</dt>
+          <dd id="uploadState">—</dd>
+          <dt>长期 token</dt>
+          <dd id="tokenState">—</dd>
+        </dl>
+        <p class="note">
+          在 RustMoni 桌面端打开「浏览器桥」后会显示 6 位配对码与实际端口。
+          token 只保存在 <code>chrome.storage.local</code>，页面不回显，也不会拼进 URL。
+          修改地址后需要重新配对。
+        </p>
+      </section>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

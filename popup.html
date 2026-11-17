@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RustMoni Connector</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1220;
+        --panel: #121b2c;
+        --line: #223049;
+        --text: #e6edf7;
+        --muted: #8fa2bd;
+        --accent: #0fdc78;
+        --warn: #f5b544;
+        --danger: #ef5b6b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        width: 340px;
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      header { display: flex; align-items: center; gap: 10px; }
+      header svg { flex: 0 0 auto; border-radius: 8px; }
+      h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .2px; }
+      .version { margin: 0; color: var(--muted); font-size: 11px; }
+      .status-row {
+        display: flex; align-items: center; gap: 8px;
+        margin: 14px 0 10px; padding: 9px 11px;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+      }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+      .dot.online { background: var(--accent); box-shadow: 0 0 8px rgba(15, 220, 120, .6); }
+      .dot.pending { background: var(--warn); }
+      .dot.offline { background: var(--danger); }
+      dl { margin: 0 0 12px; display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; }
+      dt { color: var(--muted); font-size: 12px; }
+      dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+      .row { display: flex; gap: 8px; }
+      button {
+        flex: 1; padding: 8px 10px; border-radius: 7px; cursor: pointer;
+        border: 1px solid transparent; background: var(--accent); color: #062013;
+        font: inherit; font-weight: 600;
+      }
+      button:hover { filter: brightness(1.06); }
+      button.secondary {
+        background: transparent; color: var(--text); border-color: var(--line); font-weight: 500;
+      }
+      button.secondary:hover { border-color: #3d5378; }
+      h2 { margin: 16px 0 8px; font-size: 12px; color: var(--muted); font-weight: 600; }
+      .perms { display: grid; gap: 6px; }
+      .perm {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px;
+        background: var(--panel);
+      }
+      .perm span { font-size: 12px; }
+      .perm input { accent-color: var(--accent); width: 15px; height: 15px; }
+      .hint { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="#0fdc78" />
+        <path d="M8 23V9h4.2l3.8 6 3.8-6H24v14h-3.8v-7.6L16 21.8l-4.2-6.4V23H8Z" fill="#07210f" />
+      </svg>
+      <div>
+        <h1>RustMoni Connector</h1>
+        <p class="version" id="version">v1.0.0</p>
+      </div>
+    </header>
+
+    <div class="status-row">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">正在检测…</span>
+    </div>
+
+    <dl>
+      <dt>桥接地址</dt>
+      <dd id="wsUrl">—</dd>
+      <dt>配对服务</dt>
+      <dd id="endpoint">—</dd>
+      <dt>长期 token</dt>
+      <dd id="tokenState">—</dd>
+      <dt>上传 token</dt>
+      <dd id="uploadState">—</dd>
+    </dl>
+
+    <div class="row">
+      <button id="pairButton" type="button">打开配对设置</button>
+      <button id="reconnectButton" class="secondary" type="button">重新连接</button>
+    </div>
+
+    <h2>可选权限</h2>
+    <div class="perms">
+      <label class="perm"><span>cookies（cookies.get）</span><input type="checkbox" data-permission="cookies" /></label>
+      <label class="perm"><span>downloads（下载增强）</span><input type="checkbox" data-permission="downloads" /></label>
+      <label class="perm"><span>tabs（标签页信息）</span><input type="checkbox" data-permission="tabs" /></label>
+    </div>
+
+    <p class="hint">
+      在需要操作的网页上点击一次扩展图标，才会授予该页面的临时访问权（activeTab）。
+      扩展只连接 127.0.0.1，token 不会出现在 URL 中。
+    </p>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

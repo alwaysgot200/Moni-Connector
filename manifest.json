@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "RustMoni Connector",
+  "version": "1.0.0",
+  "description": "RustMoni 浏览器动作桥：本地 WebSocket 桥、元素采集、截图与资源上传。",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms"
+  ],
+  "optional_permissions": [
+    "cookies",
+    "downloads",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "ws://127.0.0.1/*",
+    "ws://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "RustMoni Connector"
+  },
+  "options_page": "options.html"
+}
