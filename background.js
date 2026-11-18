@@ -379,15 +379,40 @@ async function route(method, params, deadline) {
 async function activeTab() {
   let tabs;
   try {
-    tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    tabs = await chrome.tabs.query({ active: true });
   } catch (err) {
     throw bridgeError(CODES.BROWSER_OFFLINE, `查询活动标签页失败：${err && err.message ? err.message : err}`);
   }
-  const tab = Array.isArray(tabs) ? tabs[0] : null;
-  if (!tab || typeof tab.id !== "number" || tab.id < 0) {
+  const candidates = (Array.isArray(tabs) ? tabs : []).filter(
+    (tab) => tab && typeof tab.id === "number" && tab.id >= 0
+  );
+  if (candidates.length === 0) {
     throw bridgeError(CODES.BROWSER_OFFLINE, "没有可用的活动标签页，请先切换到网页");
   }
-  return tab;
+  // 宿主在动作里调用时浏览器往往不在前台，currentWindow / lastFocusedWindow 会指向
+  // 早先的后台窗口，拾取器就画在用户看不见的页面上（最小化窗口更会挂起到超时）。
+  // 改为显式挑选：已聚焦窗口优先，否则在非最小化窗口里取最近访问的标签页。
+  const scored = [];
+  for (const tab of candidates) {
+    let win = null;
+    try {
+      win = await chrome.windows.get(tab.windowId);
+    } catch {
+      win = null;
+    }
+    if (win && win.state === "minimized") continue;
+    if (win && win.focused) return tab;
+    scored.push({
+      tab,
+      web: /^https?:/i.test(tab.url || "") ? 1 : 0,
+      last: Number(tab.lastAccessed) || 0
+    });
+  }
+  if (scored.length === 0) {
+    throw bridgeError(CODES.BROWSER_OFFLINE, "没有可用的活动标签页，请先切换到网页");
+  }
+  scored.sort((a, b) => b.web - a.web || b.last - a.last);
+  return scored[0].tab;
 }
 
 function injectionError(err) {
@@ -482,11 +507,16 @@ async function pickElements(params, deadline) {
 
   let ack;
   try {
-    ack = await chrome.tabs.sendMessage(tab.id, {
-      type: MSG.PICK_START,
-      requestId,
-      params: { multiple, hint }
-    });
+    // 页面被丢弃/挂起时 sendMessage 可能永不返回，给启动确认加超时避免整次动作挂死。
+    ack = await withDeadline(
+      chrome.tabs.sendMessage(tab.id, {
+        type: MSG.PICK_START,
+        requestId,
+        params: { multiple, hint }
+      }),
+      5000,
+      CODES.TIMEOUT
+    );
   } catch (err) {
     clearPick(requestId);
     throw injectionError(err);

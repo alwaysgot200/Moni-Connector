@@ -105,6 +105,13 @@ token，然后重试上传一次。
 失败回同 `id` 的 `error` 帧。超时由扩展按 `deadline_ms` 自行截断并回
 `A501_TIMEOUT`（`elements.pick` 超时同时通知页面结束拾取）。
 
+宿主侧的 `deadline_ms` 分级（2026-11-18）：普通方法默认 **30000**；`elements.pick`
+为 **300000**（用户在逐个点选，属于人在环）。宿主等待脚本调用时不计入 Lua 沙箱
+预算，扩展只需按收到的时间上限执行。
+
+**注入 ack**：宿主发出 `PICK_START` 后要求扩展在 **5 秒**内回一次确认；超时按
+`A406_BROWSER_OFFLINE` 处理，避免页面不可注入时用户干等 5 分钟。
+
 ### 2.4 result（扩展 → 宿主）
 
 ```json
@@ -180,11 +187,25 @@ token，然后重试上传一次。
 
 - 参数：`{multiple?: boolean, hint?: string}`。
 - 返回：用户点击拾取的 `BrowserElement[]`；`multiple=false` 时点第一个即结束。
-- 行为：注入拾取器，绿色 `2px #0FDC78` 高亮框（`pointer-events:none`，
-  `z-index:2147483647`），`Esc` 结束；最多 50 个，按 URL 去重。
+- 行为：注入拾取器，绿色 `2px #0FDC78` 高亮框 + 顶部提示条，`Esc` 结束；最多 50 个，按 URL 去重。
+- **覆盖层实现约束（2026-11-18）**：高亮框与提示条必须挂在自定义元素
+  `<moni-picker-overlay>` 的 **closed Shadow DOM** 内，定位与配色写在 `:host`/内部
+  样式表；宿主节点不得带 inline `style` 或 `z-index`。原因：反广告/主题/阅读模式
+  常用 `head ~ div[style*="z-index"] { display:none!important; … }` 这类规则，会把
+  普通 `div` 覆盖层整体隐藏（元素仍在、`elementFromPoint` 仍命中，但用户屏幕空白）。
+- 拾取结束后只把覆盖层 `display:none`，不销毁宿主，下一次拾取复用。
 - 取消返回 `[]`；超时 `A501_TIMEOUT`；已有拾取进行中 `A403_BRIDGE_BUSY`。
 - 若拾取完成时宿主已超时/重连（无 pending 请求），1.1.0 起补推
   `elements.picked` 事件并保留 `orphanPicked` 兜底。
+
+**标签页选择**：扩展遍历所有窗口的 `chrome.tabs.query({active:true})`，跳过
+`state === "minimized"` 的窗口，优先 http/https 页面，再按 `lastAccessed` 取最近。
+浏览器整体最小化（如 Win+D 后）时没有候选，返回 `A406_BROWSER_OFFLINE`，文案为
+“没有可用的活动标签页，请先切换到网页”；扩展不会主动恢复最小化窗口抢焦点。
+
+**脚本生效方式**：`chrome.scripting.executeScript({files})` 每次注入都从磁盘读取
+最新 content script，修改 `content/*.js` 后刷新页面即生效，无需重载扩展；只有
+`background.js`（service worker）变更才需要重载。
 
 ### 3.3 `elements.query`
 

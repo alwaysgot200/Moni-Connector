@@ -10,6 +10,8 @@
     requestId: "",
     elements: [],
     hint: "",
+    host: null,
+    shadow: null,
     box: null,
     hintBox: null,
     savedCursor: ""
@@ -22,57 +24,50 @@
     return helper.describeElement(target, document);
   }
 
-  function ensureBox() {
-    if (state.box && state.box.isConnected) return state.box;
+  // 页面样式与广告拦截扩展常用 `div[style*="z-index"]{display:none!important}`
+  // 一类规则藏弹层；改用自定义元素 + Shadow DOM，宿主不带 style/z-index，
+  // 内部样式也不受页面 CSS 影响，否则拾取框与提示条会“存在但不可见”。
+  function ensureOverlay() {
+    if (state.host && state.host.isConnected) return;
+    const host = document.createElement("moni-picker-overlay");
+    const shadow = host.attachShadow({ mode: "closed" });
+    const style = document.createElement("style");
+    style.textContent = [
+      ":host{all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:block}",
+      ".box{position:fixed;left:0;top:0;width:0;height:0;border:2px solid #0FDC78;",
+      "background:rgba(15,220,120,.12);border-radius:2px;box-sizing:border-box;display:none}",
+      ".hint{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#0b1220;",
+      "color:#d7ffe9;border:1px solid #0FDC78;border-radius:4px;padding:6px 10px;",
+      "font:12px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;",
+      "box-shadow:0 6px 18px rgba(0,0,0,.35);max-width:80vw;white-space:nowrap;",
+      "overflow:hidden;text-overflow:ellipsis;display:none}"
+    ].join("");
+    shadow.appendChild(style);
     const box = document.createElement("div");
-    box.style.cssText = [
-      "position:fixed",
-      "left:0",
-      "top:0",
-      "width:0",
-      "height:0",
-      "pointer-events:none",
-      "z-index:2147483647",
-      "border:2px solid #0FDC78",
-      "background:rgba(15,220,120,.12)",
-      "border-radius:2px",
-      "box-sizing:border-box",
-      "display:none"
-    ].join(";");
-    document.documentElement.appendChild(box);
+    box.className = "box";
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    shadow.append(box, hint);
+    (document.body || document.documentElement).appendChild(host);
+    state.host = host;
+    state.shadow = shadow;
     state.box = box;
-    return box;
+    state.hintBox = hint;
+  }
+
+  function ensureBox() {
+    ensureOverlay();
+    return state.box;
   }
 
   function ensureHint() {
-    if (state.hintBox && state.hintBox.isConnected) return state.hintBox;
-    const hint = document.createElement("div");
-    hint.style.cssText = [
-      "position:fixed",
-      "top:12px",
-      "left:50%",
-      "transform:translateX(-50%)",
-      "z-index:2147483647",
-      "pointer-events:none",
-      "background:#0b1220",
-      "color:#d7ffe9",
-      "border:1px solid #0FDC78",
-      "border-radius:4px",
-      "padding:6px 10px",
-      "font:12px/1.5 system-ui,-apple-system,Segoe UI,sans-serif",
-      "box-shadow:0 6px 18px rgba(0,0,0,.35)",
-      "max-width:80vw",
-      "white-space:nowrap",
-      "overflow:hidden",
-      "text-overflow:ellipsis"
-    ].join(";");
-    document.documentElement.appendChild(hint);
-    state.hintBox = hint;
-    return hint;
+    ensureOverlay();
+    return state.hintBox;
   }
 
   function updateHint(extra) {
     if (!state.hintBox) return;
+    state.hintBox.style.display = "block";
     const base = state.hint || "点击页面图片进行拾取";
     const count = `已选 ${state.elements.length}/50`;
     state.hintBox.textContent = extra
@@ -138,8 +133,7 @@
     state.active = false;
     removeListeners();
     if (state.box) state.box.style.display = "none";
-    if (state.hintBox && state.hintBox.isConnected) state.hintBox.remove();
-    state.hintBox = null;
+    if (state.hintBox) state.hintBox.style.display = "none";
     document.documentElement.style.cursor = state.savedCursor;
 
     const elements = state.elements.slice(0, 50);
@@ -170,6 +164,8 @@
     state.hint = typeof params.hint === "string" ? params.hint : "";
     ensureBox();
     ensureHint();
+    state.box.style.display = "none";
+    state.hintBox.style.display = "block";
     updateHint("");
     state.savedCursor = document.documentElement.style.cursor;
     document.documentElement.style.cursor = "crosshair";
